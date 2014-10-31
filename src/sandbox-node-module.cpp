@@ -171,18 +171,18 @@ struct Cookie {
   std::promise<Handle<Value> > callbackResult;
 };
 
-std::future<Persistent<Value> >
+NodeSandbox::VFSFuture
 NodeSandbox::doVFS(const std::string& name, Handle<Value> argv[], int argc) {
   std::cout << "Calling VFS " << name << std::endl;
   Handle<Value> new_argv[argc+2];
-  std::promise<Persistent<Value> >* callbackPromise = new std::promise<Persistent<Value> >();
+  //FIXME: This needs deleted at some point in the future
+  VFSPromise* callbackPromise = new VFSPromise();
   new_argv[0] = External::Wrap(callbackPromise);
   new_argv[1] = String::New (name.c_str());
   for(int i = 0; i < argc; i++)
     new_argv[i+2] = argv[i];
   node::MakeCallback (wrap->nodeThis, "onVFS", argc+2, new_argv);
-  auto f = callbackPromise->get_future();
-  return f;
+  return callbackPromise->get_future();
 }
 
 void
@@ -240,7 +240,7 @@ Handle<Value>
 NodeSandbox::node_finish_vfs (const Arguments& args)
 {
   Handle<Value> cookie = args[0];
-  std::promise<Persistent<Value> >* p = static_cast<std::promise<Persistent<Value> >* > (External::Unwrap (cookie));
+  VFSPromise* p = static_cast<VFSPromise* > (External::Unwrap (cookie));
   p->set_value (Persistent<Value>::New(args[1]));
   return Undefined();
 }

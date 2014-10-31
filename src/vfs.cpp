@@ -60,7 +60,6 @@ VFS::VFS(Sandbox* sandbox)
   m_whitelist.push_back ("/lib64/x86_64/libc.so.6");
   m_whitelist.push_back ("/lib64/libc.so.6");
   m_whitelist.push_back ("/etc/ld.so.cache");
-  //mountFilesystem (std::string("/codius"), std::shared_ptr<Filesystem>(new NativeFilesystem ("/tmp/sbox-root")));
 }
 
 void

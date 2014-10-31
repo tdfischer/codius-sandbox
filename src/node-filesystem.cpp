@@ -13,28 +13,35 @@ CodiusNodeFilesystem::CodiusNodeFilesystem(NodeSandbox* sbox)
 CodiusNodeFilesystem::VFSResult
 CodiusNodeFilesystem::doVFS(const std::string& name, Handle<Value> argv[], int argc)
 {
-  std::future<Persistent<Value> > ret = m_sbox->doVFS (name, argv, argc);
-  Handle<Value> result;
   uv_loop_t*  loop = uv_default_loop ();
+  Handle<Value> result;
+  NodeSandbox::VFSFuture ret = m_sbox->doVFS (name, argv, argc);
+
   while (ret.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
     uv_run (loop, UV_RUN_ONCE);
+
   result = ret.get();
+
   if (result->IsObject()) {
     Handle<Object> resultObj = result->ToObject();
     int err = resultObj->Get (String::NewSymbol ("error"))->ToInt32()->Value();
     Handle<Value> resultValue = resultObj->Get (String::NewSymbol ("result"))->ToObject();
+
     VFSResult r  = {
       .errnum = err,
       .result = resultValue
     };
+
     return r;
   }
 
   ThrowException(Exception::TypeError(String::New("Expected a VFS call return type")));
+
   VFSResult r = {
     .errnum = ENOSYS,
     .result = Undefined()
   };
+
   return r;
 }
 
@@ -48,6 +55,7 @@ CodiusNodeFilesystem::open(const char* name, int flags)
   };
 
   VFSResult ret = doVFS(std::string ("open"), argv, 3);
+
   if (ret.errnum) {
     return -ret.errnum;
   }
