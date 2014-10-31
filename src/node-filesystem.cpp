@@ -66,13 +66,29 @@ CodiusNodeFilesystem::open(const char* name, int flags)
 ssize_t
 CodiusNodeFilesystem::read(int fd, void* buf, size_t count)
 {
-  return -ENOSYS;
+  Handle<Value> argv[] = {
+    Int32::New (fd),
+    Int32::New (count)
+  };
+
+  VFSResult ret = doVFS (std::string ("read"), argv, 2);
+
+  if (ret.errnum)
+    return -ret.errnum;
+
+  ret.result->ToString()->WriteUtf8 (static_cast<char*>(buf), count);
+
+  return ret.result->ToString()->Utf8Length();
 }
 
 int
 CodiusNodeFilesystem::close(int fd)
 {
-  return -ENOSYS;
+  Handle<Value> argv[] = {
+    Int32::New (fd)
+  };
+
+  return -doVFS (std::string ("close"), argv, 1).errnum;
 }
 
 int
