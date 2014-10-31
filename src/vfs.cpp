@@ -35,6 +35,7 @@ DirentBuilder::data() const {
   return ret;
 }
 
+//FIXME: This needs to be able to support non-regular file types
 void
 DirentBuilder::push(std::vector<char>& ret, const std::string& name) const {
   static long inode = 4242;
