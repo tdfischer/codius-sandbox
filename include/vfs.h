@@ -35,6 +35,16 @@ private:
   std::map<int, std::string> m_openFiles;
 };
 
+class DirentBuilder {
+public:
+  void append(const std::string& name);
+  std::vector<char> data() const;
+
+private:
+  std::vector<std::string> m_names;
+  void push(std::vector<char>& ret, const std::string& name) const;
+};
+
 class VFS {
 public:
   VFS(Sandbox* sandbox);

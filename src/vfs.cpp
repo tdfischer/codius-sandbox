@@ -21,39 +21,36 @@ struct linux_dirent {
   */
 };
 
-class DirentBuilder {
-public:
-  void append(const std::string& name) {
-    m_names.push_back (name);
+void
+DirentBuilder::append(const std::string& name) {
+  m_names.push_back (name);
+}
+
+std::vector<char>
+DirentBuilder::data() const {
+  std::vector<char> ret;
+  for (auto i = m_names.cbegin(); i != m_names.cend(); i++) {
+    push (ret, *i);
   }
+  return ret;
+}
 
-  std::vector<char> data() const {
-    std::vector<char> ret;
-    for (auto i = m_names.cbegin(); i != m_names.cend(); i++) {
-      push (ret, *i);
-    }
-    return ret;
-  }
+void
+DirentBuilder::push(std::vector<char>& ret, const std::string& name) const {
+  static long inode = 4242;
+  unsigned short reclen;
+  char* d_type;
 
-private:
-  std::vector<std::string> m_names;
-
-  void push(std::vector<char>& ret, const std::string& name) const {
-    static long inode = 4242;
-    unsigned short reclen;
-    char* d_type;
-
-    reclen = sizeof (linux_dirent) + name.size() + sizeof (char) * 3;
-    off_t start = ret.size();
-    ret.resize (start + reclen);
-    linux_dirent* ent = reinterpret_cast<linux_dirent*>(&ret.data()[start]);
-    ent->d_ino = inode++;
-    ent->d_reclen = reclen;
-    memcpy (ent->d_name, name.data(), name.size() + 1);
-    d_type = reinterpret_cast<char*>(ent + reclen - 1);
-    *d_type = DT_REG;
-  }
-};
+  reclen = sizeof (linux_dirent) + name.size() + sizeof (char) * 3;
+  off_t start = ret.size();
+  ret.resize (start + reclen);
+  linux_dirent* ent = reinterpret_cast<linux_dirent*>(&ret.data()[start]);
+  ent->d_ino = inode++;
+  ent->d_reclen = reclen;
+  memcpy (ent->d_name, name.data(), name.size() + 1);
+  d_type = reinterpret_cast<char*>(ent + reclen - 1);
+  *d_type = DT_REG;
+}
 
 VFS::VFS(Sandbox* sandbox)
   : m_sbox (sandbox)
@@ -63,7 +60,7 @@ VFS::VFS(Sandbox* sandbox)
   m_whitelist.push_back ("/lib64/x86_64/libc.so.6");
   m_whitelist.push_back ("/lib64/libc.so.6");
   m_whitelist.push_back ("/etc/ld.so.cache");
-  mountFilesystem (std::string("/codius"), std::shared_ptr<Filesystem>(new NativeFilesystem ("/tmp/sbox-root")));
+  //mountFilesystem (std::string("/codius"), std::shared_ptr<Filesystem>(new NativeFilesystem ("/tmp/sbox-root")));
 }
 
 void
