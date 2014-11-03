@@ -85,6 +85,12 @@ VFS::getFile(int fd) const
   return m_openFiles.at(fd);
 }
 
+int
+File::close()
+{
+  return m_fs->close(m_localFD);
+}
+
 std::pair<std::string, std::shared_ptr<Filesystem> >
 VFS::getFilesystem(const std::string& path) const
 {
@@ -201,11 +207,18 @@ VFS::do_close (Sandbox::SyscallCall& call)
     call.id = -1;
     File::Ptr fh = getFile (call.args[0]);
     if (fh) {
-      call.returnVal = fh->fs()->close (fh->virtualFD());
+      call.returnVal = fh->close ();
+      m_openFiles.erase (fh->virtualFD());
     } else {
       call.returnVal = -EBADF;
     }
   }
+}
+
+ssize_t
+File::read(void* buf, size_t count)
+{
+  return m_fs->read (m_localFD, buf, count);
 }
 
 void
@@ -216,13 +229,19 @@ VFS::do_read (Sandbox::SyscallCall& call)
     File::Ptr file = getFile (call.args[0]);
     std::vector<char> buf (call.args[2]);
     if (file) {
-      ssize_t readCount = file->fs()->read (file->localFD(), buf.data(), buf.size());
+      ssize_t readCount = file->read (buf.data(), buf.size());
       m_sbox->writeData (call.args[1], buf.size(), buf.data());
       call.returnVal = readCount;
     } else {
       call.returnVal = -EBADF;
     }
   }
+}
+
+int
+File::fstat (struct stat* buf)
+{
+  return m_fs->fstat (m_localFD, buf);
 }
 
 void
@@ -233,12 +252,18 @@ VFS::do_fstat (Sandbox::SyscallCall& call)
     File::Ptr file = getFile (call.args[0]);
     call.id = -1;
     if (file) {
-      call.returnVal = file->fs()->fstat (file->localFD(), &sbuf);
+      call.returnVal = file->fstat (&sbuf);
       m_sbox->writeData(call.args[1], sizeof (sbuf), (char*)&sbuf);
     } else {
       call.returnVal = -EBADF;
     }
   }
+}
+
+int
+File::getdents(struct linux_dirent* dirs, unsigned int count)
+{
+  return m_fs->getdents (m_localFD, dirs, count);
 }
 
 void
@@ -249,7 +274,7 @@ VFS::do_getdents (Sandbox::SyscallCall& call)
     call.id = -1;
     if (file) {
       void* buf = malloc (call.args[2]);
-      call.returnVal = file->fs()->getdents (file->localFD(), (struct linux_dirent*)buf, call.args[2]);
+      call.returnVal = file->getdents ((struct linux_dirent*)buf, call.args[2]);
       m_sbox->writeData(call.args[1], call.args[2], (char*)buf);
       free (buf);
     } else {

@@ -18,6 +18,11 @@ public:
   int virtualFD() const;
   std::shared_ptr<Filesystem> fs() const;
 
+  int close();
+  int fstat(struct stat* buf);
+  int getdents(struct linux_dirent* dirs, unsigned int count);
+  ssize_t read(void* buf, size_t count);
+
 private:
   static int s_nextFD;
   int m_localFD;
