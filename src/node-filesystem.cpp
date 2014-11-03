@@ -97,6 +97,22 @@ CodiusNodeFilesystem::fstat(int fd, struct stat* buf)
   return -ENOSYS;
 }
 
+off_t
+CodiusNodeFilesystem::lseek(int fd, off_t offset, int whence)
+{
+  Handle<Value> argv[] = {
+    Int32::New (fd),
+    Int32::New (offset),
+    Int32::New (whence)
+  };
+
+  VFSResult ret = doVFS(std::string ("lseek"), argv, 3);
+  if (ret.errnum)
+    return -ret.errnum;
+  else
+    return ret.result->ToInt32()->Value();
+}
+
 int
 CodiusNodeFilesystem::getdents(int fd, struct linux_dirent* dirs, unsigned int count)
 {

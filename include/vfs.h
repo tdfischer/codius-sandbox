@@ -22,6 +22,7 @@ public:
   int fstat(struct stat* buf);
   int getdents(struct linux_dirent* dirs, unsigned int count);
   ssize_t read(void* buf, size_t count);
+  off_t lseek(off_t offset, int whence);
 
   std::string path() const;
 
@@ -42,6 +43,7 @@ public:
   virtual int close(int fd) = 0;
   virtual int fstat(int fd, struct stat* buf) = 0;
   virtual int getdents(int fd, struct linux_dirent* dirs, unsigned int count) = 0;
+  virtual off_t lseek(int fd, off_t offset, int whence) = 0;
 };
 
 class NativeFilesystem : public Filesystem {
@@ -52,6 +54,7 @@ public:
   virtual int close(int fd);
   virtual int fstat(int fd, struct stat* buf);
   virtual int getdents(int fd, struct linux_dirent* dirs, unsigned int count);
+  virtual off_t lseek(int fd, off_t offset, int whence);
 
 private:
   std::string m_root;
@@ -97,6 +100,7 @@ private:
   void do_fstat(Sandbox::SyscallCall& call);
   void do_getdents(Sandbox::SyscallCall& call);
   void do_openat(Sandbox::SyscallCall& call);
+  void do_lseek(Sandbox::SyscallCall& call);
 
   File::Ptr makeFile (int fd, const std::string& path, std::shared_ptr<Filesystem>& fs);
 };
