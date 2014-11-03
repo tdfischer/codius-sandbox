@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <cassert>
 
 struct linux_dirent {
   unsigned long d_ino;
@@ -77,24 +78,10 @@ VFS::getFilename(Sandbox::Address addr) const
   return std::string (buf.data());
 }
 
-
-int
-VFS::fromVirtualFD(int fd)
+File::Ptr
+VFS::getFile(int fd) const
 {
-  if (fd >= 4095)
-    return fd - 4095;
-  return -1;
-}
-
-int
-VFS::toVirtualFD(int fd)
-{
-  return fd + 4095;
-}
-
-std::shared_ptr<Filesystem>
-VFS::getFilesystem(int fd) const
-{
+  assert (isVirtualFD (fd));
   return m_openFiles.at(fd);
 }
 
@@ -111,10 +98,19 @@ VFS::getFilesystem(const std::string& path) const
   return std::make_pair (std::string(), nullptr);
 }
 
+int File::s_nextFD = VFS::firstVirtualFD;
+
+File::File(int localFD, std::shared_ptr<Filesystem>& fs)
+  : m_localFD (localFD),
+    m_fs (fs)
+{
+  //FIXME: Should be atomic
+  m_virtualFD = s_nextFD++;
+}
+
 void
 VFS::do_openat (Sandbox::SyscallCall& call)
 {
-  int fd = fromVirtualFD (call.args[0]);
   std::string fname = getFilename (call.args[1]);
   if (call.args[0] == AT_FDCWD) {
     std::string cwd = m_sbox->getCWD();
@@ -127,11 +123,11 @@ VFS::do_openat (Sandbox::SyscallCall& call)
 
     if (!isWhitelisted (fname)) {
       call.id = -1;
-      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (absPath);
       if (fs.second) {
         int fd = fs.second->open (fs.first.c_str(), call.args[2]);
-        m_openFiles.insert (std::make_pair (fd, fs.second));
-        call.returnVal = toVirtualFD (fd);
+        File::Ptr f (makeFile (fd, fs.second));
+        call.returnVal = f->virtualFD();
       } else {
         call.returnVal = -ENOENT;
       }
@@ -140,14 +136,27 @@ VFS::do_openat (Sandbox::SyscallCall& call)
     //FIXME: fd should be verified to make sure one can't do dup2(AT_FDCWD, foo)
     //FIXME: Should also use map of opened filenames to figure out what
     //filesystem we end up on
-    call.id = -1;
-    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
-    if (fs.second) {
-      call.returnVal = fs.second->openat (fd, fs.first.c_str(), call.args[2], call.args[3]);
-    } else {
-      call.returnVal = -ENOENT;
+    if (isVirtualFD (call.args[0])) {
+      File::Ptr file = getFile (call.args[0]);
+      call.id = -1;
+      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+      if (fs.second) {
+        int fd = fs.second->openat (file->localFD(), fs.first.c_str(), call.args[2], call.args[3]);
+        File::Ptr f (makeFile (fd, fs.second));
+        call.returnVal = f->virtualFD();
+      } else {
+        call.returnVal = -ENOENT;
+      }
     }
   }
+}
+
+File::Ptr
+VFS::makeFile (int fd, std::shared_ptr<Filesystem>& fs)
+{
+  File::Ptr f(new File (fd, fs));
+  m_openFiles.insert (std::make_pair (f->virtualFD(), f));
+  return f;
 }
 
 void
@@ -159,23 +168,40 @@ VFS::do_open (Sandbox::SyscallCall& call)
     std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
     if (fs.second) {
       int fd = fs.second->open (fs.first.c_str(), call.args[0]);
-      m_openFiles.insert (std::make_pair (fd, fs.second));
-      call.returnVal = toVirtualFD (fd);
+      File::Ptr file (makeFile (fd, fs.second));
+      call.returnVal = file->virtualFD();
     } else {
       call.returnVal = -ENOENT;
     }
   }
 }
 
+int
+File::virtualFD() const
+{
+  return m_virtualFD;
+}
+
+int
+File::localFD() const
+{
+  return m_localFD;
+}
+
+std::shared_ptr<Filesystem>
+File::fs() const
+{
+  return m_fs;
+}
+
 void
 VFS::do_close (Sandbox::SyscallCall& call)
 {
-  int fh = fromVirtualFD (call.args[0]);
-  if (fh > 0) {
+  if (isVirtualFD (call.args[0])) {
     call.id = -1;
-    std::shared_ptr<Filesystem> fs = getFilesystem (fh);
-    if (fs) {
-      call.returnVal = fs->close (fh);
+    File::Ptr fh = getFile (call.args[0]);
+    if (fh) {
+      call.returnVal = fh->fs()->close (fh->virtualFD());
     } else {
       call.returnVal = -EBADF;
     }
@@ -185,13 +211,12 @@ VFS::do_close (Sandbox::SyscallCall& call)
 void
 VFS::do_read (Sandbox::SyscallCall& call)
 {
-  int fh = fromVirtualFD (call.args[0]);
-  if (fh > 0) {
+  if (isVirtualFD (call.args[0])) {
     call.id = -1;
+    File::Ptr file = getFile (call.args[0]);
     std::vector<char> buf (call.args[2]);
-    std::shared_ptr<Filesystem> fs = getFilesystem (fh);
-    if (fs) {
-      ssize_t readCount = fs->read (fh, buf.data(), buf.size());
+    if (file) {
+      ssize_t readCount = file->fs()->read (file->localFD(), buf.data(), buf.size());
       m_sbox->writeData (call.args[1], buf.size(), buf.data());
       call.returnVal = readCount;
     } else {
@@ -203,13 +228,12 @@ VFS::do_read (Sandbox::SyscallCall& call)
 void
 VFS::do_fstat (Sandbox::SyscallCall& call)
 {
-  int fd = fromVirtualFD (call.args[0]);
-  if (fd > -1) {
+  if (isVirtualFD (call.args[0])) {
     struct stat sbuf;
+    File::Ptr file = getFile (call.args[0]);
     call.id = -1;
-    std::shared_ptr<Filesystem> fs = getFilesystem (fd);
-    if (fs) {
-      call.returnVal = fs->fstat (fd, &sbuf);
+    if (file) {
+      call.returnVal = file->fs()->fstat (file->localFD(), &sbuf);
       m_sbox->writeData(call.args[1], sizeof (sbuf), (char*)&sbuf);
     } else {
       call.returnVal = -EBADF;
@@ -220,13 +244,12 @@ VFS::do_fstat (Sandbox::SyscallCall& call)
 void
 VFS::do_getdents (Sandbox::SyscallCall& call)
 {
-  int fd = fromVirtualFD (call.args[0]);
-  if (fd > -1) {
+  if (isVirtualFD (call.args[0])) {
+    File::Ptr file = getFile (call.args[0]);
     call.id = -1;
-    std::shared_ptr<Filesystem> fs = getFilesystem (fd);
-    if (fs) {
+    if (file) {
       void* buf = malloc (call.args[2]);
-      call.returnVal = fs->getdents (fd, (struct linux_dirent*)buf, call.args[2]);
+      call.returnVal = file->fs()->getdents (file->localFD(), (struct linux_dirent*)buf, call.args[2]);
       m_sbox->writeData(call.args[1], call.args[2], (char*)buf);
       free (buf);
     } else {
@@ -251,6 +274,8 @@ VFS::handleSyscall(const Sandbox::SyscallCall& call)
   }
   return ret;
 }
+
+#undef HANDLE_CALL
 
 bool
 VFS::isWhitelisted(const std::string& str)

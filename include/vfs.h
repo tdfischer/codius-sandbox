@@ -8,6 +8,23 @@
 class Filesystem;
 class DirentBuilder;
 
+class File {
+public:
+  File(int localFD, std::shared_ptr<Filesystem>& fs);
+
+  using Ptr = std::shared_ptr<File>;
+
+  int localFD() const;
+  int virtualFD() const;
+  std::shared_ptr<Filesystem> fs() const;
+
+private:
+  static int s_nextFD;
+  int m_localFD;
+  int m_virtualFD;
+  std::shared_ptr<Filesystem> m_fs;
+};
+
 class Filesystem {
 public:
   Filesystem();
@@ -52,7 +69,10 @@ public:
   Sandbox::SyscallCall handleSyscall(const Sandbox::SyscallCall& call);
   std::string getFilename(Sandbox::Address addr) const;
   std::pair<std::string, std::shared_ptr<Filesystem> > getFilesystem(const std::string& path) const;
-  std::shared_ptr<Filesystem> getFilesystem(int fd) const;
+  File::Ptr getFile(int fd) const;
+
+  inline bool isVirtualFD (int fd) const {return fd >= firstVirtualFD;}
+  static constexpr int firstVirtualFD = 4096;
 
   void mountFilesystem(const std::string& path, std::shared_ptr<Filesystem> fs);
   std::string getMountedFilename(const std::string& path) const;
@@ -60,12 +80,10 @@ public:
 private:
   Sandbox* m_sbox;
   std::map<std::string, std::shared_ptr <Filesystem>> m_mountpoints;
-  std::map<int, std::shared_ptr<Filesystem>> m_openFiles;
+  std::map<int, File::Ptr> m_openFiles;
   std::vector<std::string> m_whitelist;
 
   bool isWhitelisted(const std::string& str);
-  int fromVirtualFD(int fd);
-  int toVirtualFD(int fd);
 
   void do_open(Sandbox::SyscallCall& call);
   void do_close(Sandbox::SyscallCall& call);
@@ -73,6 +91,8 @@ private:
   void do_fstat(Sandbox::SyscallCall& call);
   void do_getdents(Sandbox::SyscallCall& call);
   void do_openat(Sandbox::SyscallCall& call);
+
+  File::Ptr makeFile (int fd, std::shared_ptr<Filesystem>& fs);
 };
 
 #endif // VFS_H
