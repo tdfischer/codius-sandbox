@@ -10,7 +10,7 @@ class DirentBuilder;
 
 class File {
 public:
-  File(int localFD, std::shared_ptr<Filesystem>& fs);
+  File(int localFD, const std::string& path, std::shared_ptr<Filesystem>& fs);
 
   using Ptr = std::shared_ptr<File>;
 
@@ -23,10 +23,13 @@ public:
   int getdents(struct linux_dirent* dirs, unsigned int count);
   ssize_t read(void* buf, size_t count);
 
+  std::string path() const;
+
 private:
   static int s_nextFD;
   int m_localFD;
   int m_virtualFD;
+  std::string m_path;
   std::shared_ptr<Filesystem> m_fs;
 };
 
@@ -39,7 +42,6 @@ public:
   virtual int close(int fd) = 0;
   virtual int fstat(int fd, struct stat* buf) = 0;
   virtual int getdents(int fd, struct linux_dirent* dirs, unsigned int count) = 0;
-  virtual int openat(int fd, const char* filename, int flags, mode_t mode) = 0;
 };
 
 class NativeFilesystem : public Filesystem {
@@ -50,7 +52,6 @@ public:
   virtual int close(int fd);
   virtual int fstat(int fd, struct stat* buf);
   virtual int getdents(int fd, struct linux_dirent* dirs, unsigned int count);
-  virtual int openat(int fd, const char* filename, int flags, mode_t mode);
 
 private:
   std::string m_root;
@@ -97,7 +98,7 @@ private:
   void do_getdents(Sandbox::SyscallCall& call);
   void do_openat(Sandbox::SyscallCall& call);
 
-  File::Ptr makeFile (int fd, std::shared_ptr<Filesystem>& fs);
+  File::Ptr makeFile (int fd, const std::string& path, std::shared_ptr<Filesystem>& fs);
 };
 
 #endif // VFS_H

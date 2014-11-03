@@ -106,61 +106,58 @@ VFS::getFilesystem(const std::string& path) const
 
 int File::s_nextFD = VFS::firstVirtualFD;
 
-File::File(int localFD, std::shared_ptr<Filesystem>& fs)
+File::File(int localFD, const std::string& path, std::shared_ptr<Filesystem>& fs)
   : m_localFD (localFD),
+    m_path (path),
     m_fs (fs)
 {
   //FIXME: Should be atomic
   m_virtualFD = s_nextFD++;
 }
 
+std::string
+File::path() const
+{
+  return m_path;
+}
+
 void
 VFS::do_openat (Sandbox::SyscallCall& call)
 {
   std::string fname = getFilename (call.args[1]);
-  if (call.args[0] == AT_FDCWD) {
-    std::string cwd = m_sbox->getCWD();
-    std::string absPath;
 
-    if (fname[0] == '/')
-      absPath = fname;
-    else
-      absPath = cwd + absPath;
-
-    if (!isWhitelisted (fname)) {
-      call.id = -1;
-      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (absPath);
-      if (fs.second) {
-        int fd = fs.second->open (fs.first.c_str(), call.args[2]);
-        File::Ptr f (makeFile (fd, fs.second));
-        call.returnVal = f->virtualFD();
-      } else {
-        call.returnVal = -ENOENT;
-      }
-    }
-  } else {
-    //FIXME: fd should be verified to make sure one can't do dup2(AT_FDCWD, foo)
-    //FIXME: Should also use map of opened filenames to figure out what
-    //filesystem we end up on
-    if (isVirtualFD (call.args[0])) {
+  if (fname[0] != '/') {
+    std::string fdPath;
+    if (call.args[0] == AT_FDCWD) {
+      fdPath = m_sbox->getCWD();
+    } else if (isVirtualFD (call.args[0])) {
       File::Ptr file = getFile (call.args[0]);
-      call.id = -1;
-      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
-      if (fs.second) {
-        int fd = fs.second->openat (file->localFD(), fs.first.c_str(), call.args[2], call.args[3]);
-        File::Ptr f (makeFile (fd, fs.second));
-        call.returnVal = f->virtualFD();
-      } else {
-        call.returnVal = -ENOENT;
-      }
+      fdPath = file->path();
+    }
+
+    fname = fdPath + fname;
+  }
+
+  std::cout << "openat resolved to " << fname << std::endl;
+
+  //FIXME: This is copied from do_open. Needs put in a common method
+  if (!isWhitelisted (fname)) {
+    call.id = -1;
+    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+    if (fs.second) {
+      int fd = fs.second->open (fs.first.c_str(), call.args[0]);
+      File::Ptr file (makeFile (fd, fname, fs.second));
+      call.returnVal = file->virtualFD();
+    } else {
+      call.returnVal = -ENOENT;
     }
   }
 }
 
 File::Ptr
-VFS::makeFile (int fd, std::shared_ptr<Filesystem>& fs)
+VFS::makeFile (int fd, const std::string& path, std::shared_ptr<Filesystem>& fs)
 {
-  File::Ptr f(new File (fd, fs));
+  File::Ptr f(new File (fd, path, fs));
   m_openFiles.insert (std::make_pair (f->virtualFD(), f));
   return f;
 }
@@ -174,7 +171,7 @@ VFS::do_open (Sandbox::SyscallCall& call)
     std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
     if (fs.second) {
       int fd = fs.second->open (fs.first.c_str(), call.args[0]);
-      File::Ptr file (makeFile (fd, fs.second));
+      File::Ptr file (makeFile (fd, fname, fs.second));
       call.returnVal = file->virtualFD();
     } else {
       call.returnVal = -ENOENT;
@@ -354,12 +351,6 @@ NativeFilesystem::getdents(int fd, struct linux_dirent* dirs, unsigned int count
     return buf.size();
   }
   return 0;*/
-}
-
-int
-NativeFilesystem::openat(int fd, const char* filename, int flags, mode_t mode)
-{
-  return ::openat (fd, filename, flags, mode);
 }
 
 NativeFilesystem::NativeFilesystem(const std::string& root)
