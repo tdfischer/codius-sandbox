@@ -430,34 +430,34 @@ SandboxPrivate::handleSeccompEvent(pid_t pid)
 
   d->resetScratch();
   d->handleSyscall (call);
-  vfs->handleSyscall (call).then ([=](Sandbox::SyscallCall call, Continuation<Sandbox::SyscallCall>* cont){
-    struct user_regs_struct outRegs (regs);
+  vfs->handleSyscall (call).then (Continuation<Sandbox::SyscallCall>([=](Sandbox::SyscallCall call) mutable {
 #ifdef __i386__
-    outRegs.orig_eax = call.id;
-    outRegs.ebx = call.args[0];
-    outRegs.ecx = call.args[1];
-    outRegs.edx = call.args[2];
-    outRegs.esi = call.args[3];
-    outRegs.edi = call.args[4];
-    outRegs.ebp = call.args[5];
-    outRegs.eax = call.returnVal;
+    regs.orig_eax = call.id;
+    regs.ebx = call.args[0];
+    regs.ecx = call.args[1];
+    regs.edx = call.args[2];
+    regs.esi = call.args[3];
+    regs.edi = call.args[4];
+    regs.ebp = call.args[5];
+    regs.eax = call.returnVal;
 #else
-    outRegs.orig_rax = call.id;
-    outRegs.rdi = call.args[0];
-    outRegs.rsi = call.args[1];
-    outRegs.rdx = call.args[2];
-    outRegs.rcx = call.args[3];
-    outRegs.r8 = call.args[4];
-    outRegs.r9 = call.args[5];
-    outRegs.rax = call.returnVal;
+    regs.orig_rax = call.id;
+    regs.rdi = call.args[0];
+    regs.rsi = call.args[1];
+    regs.rdx = call.args[2];
+    regs.rcx = call.args[3];
+    regs.r8 = call.args[4];
+    regs.r9 = call.args[5];
+    regs.rax = call.returnVal;
 #endif
 
-    if (ptrace (PTRACE_SETREGS, pid, 0, &outRegs) < 0) {
+    if (ptrace (PTRACE_SETREGS, pid, 0, &regs) < 0) {
+      abort();
       error (EXIT_FAILURE, errno, "Failed to set registers");
     }
 
     ptrace (PTRACE_CONT, pid, 0, 0);
-  });
+  }));
 }
 
 pid_t

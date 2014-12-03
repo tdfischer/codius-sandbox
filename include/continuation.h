@@ -3,101 +3,172 @@
 
 #include <functional>
 #include <uv.h>
+#include <cassert>
 
 #include "debug.h"
 
 template<typename Result>
 class Continuation {
 public:
-  using FunctionType = std::function<void(Result, Continuation<Result>* continuation)>;
-  using ReturnFunctionType = std::function<Result(Result)>;
-  using EmptyFunctionType = std::function<void()>;
+  using FunctionType = std::function<void(Result, Continuation<Result> cont)>;
+  using EndFunctionType = std::function<void(Result)>;
+  using ReturnFunctionType = std::function<Result()>;
 
-  Continuation(FunctionType&& func, Result&& initial = Result()) :
-    m_func (std::move (func)),
-    m_next (nullptr),
-    m_prevResult (std::move (initial))
+  Continuation(FunctionType&& func) :
+    m_exec (new Executor (std::move (func), Result()))
+  {}
+
+  Continuation(ReturnFunctionType&& func) :
+    Continuation([=](Result, Continuation<Result> cont) {cont (func());})
+  {}
+
+  Continuation(EndFunctionType&& func) :
+    Continuation([=](Result res, Continuation<Result> cont) {func (res);cont (res);})
+  {}
+
+  Continuation(Result&& result) :
+    Continuation([=](Result res, Continuation<Result> cont) {cont (res);})
+  {}
+
+  Continuation(const Result& result) :
+    Continuation([=](Result res, Continuation<Result> cont) {cont (res);})
+  {}
+
+  Continuation(Continuation&& other) :
+    m_exec (other.m_exec->ref())
   {
-    uv_async_init (uv_default_loop(), &m_async, asyncExec);
-    m_async.data = this;
+    other.m_exec->unref();
+    other.m_exec = nullptr;
   }
 
-  Continuation(ReturnFunctionType&& func, Result&& initial = Result()):
-    Continuation([=](Result res, Continuation<Result>* cont){cont->finish (func (res));}, std::move (initial)) {};
-
-  Continuation(EmptyFunctionType&& func, Result&& initial = Result()) :
-    Continuation([=](Result res) {func();return res;}, std::move (initial)) {};
-
-  Continuation(Result&& value = Result()) :
-    Continuation([=]{}, std::move (value)) {};
+  Continuation(const Continuation& other) :
+    m_exec (other.m_exec->ref())
+  {}
 
   ~Continuation()
   {
-    exec();
-    uv_close (reinterpret_cast<uv_handle_t*> (&m_async), nullptr);
+    if (m_exec) {
+      m_exec->unref();
+      m_exec = nullptr;
+    }
   }
 
-  Continuation<Result>* then(FunctionType&& next)
+  Continuation<Result>&& then(Continuation<Result>&& next)
   {
-    m_next = new Continuation<Result> (std::move (next));
-    return m_next;
+    assert (m_exec->next == nullptr);
+    m_exec->next = next.m_exec->ref();
+    return std::move (next);
   }
 
-  Continuation<Result>* then(ReturnFunctionType&& next)
+  void operator()(Result&& res)
   {
-    return then([=](Result&& prevRes, Continuation<Result>* cont) {
-      cont->finish (next (prevRes));
-    });
+    finish (std::move (res));
   }
 
-  Continuation<Result>* then(EmptyFunctionType&& next)
+  void operator()(Result& res)
   {
-    return then([=](Result&& res) {
-        next();
-        return res;
-    });
+    finish (res);
+  }
+
+  void finish(Result& res)
+  {
+    m_exec->finish (res);
   }
 
   void finish(Result&& res)
   {
-    if (m_next) {
-      m_next->m_prevResult = std::move (res);
-    }
-    finish();
-  }
-
-  void finish()
-  {
-    if (m_next) {
-      Debug() << "Exec next";
-      m_next->start();
-    } else {
-      Debug() << "End of chain";
-    }
+    m_exec->finish (std::move (res));
   }
 
 private:
-  FunctionType m_func;
-  Continuation<Result>* m_next;
-  Result m_prevResult;
-  uv_async_t m_async;
+  struct Executor {
+    FunctionType func;
+    Executor* next;
+    Result prevResult;
+    bool queued;
+    uv_async_t async;
+    int refcount;
 
-  void exec()
-  {
-    m_func (m_prevResult, this);
-    finish();
-  }
+    Executor(FunctionType&& func, Result&& initial = Result()) :
+      func (std::move (func)),
+      next (nullptr),
+      prevResult (std::move (initial)),
+      queued (false),
+      refcount (1)
+    {
+      uv_async_init (uv_default_loop(), &async, asyncExec);
+      async.data = this;
+    }
 
-  static void asyncExec(uv_async_t* async, int status)
-  {
-    Continuation* self = static_cast<Continuation*> (async->data);
-    self->exec();
-  }
+    void unref()
+    {
+      refcount--;
+      Debug() << refcount;
+      assert (refcount < 10);
+      assert (refcount >= 0);
+      if (refcount == 0)
+        enqueue();
+    }
 
-  void start()
-  {
-    uv_async_send (&m_async);
-  }
+    Executor* ref()
+    {
+      refcount++;
+      Debug() << refcount;
+      return this;
+    }
+
+    ~Executor()
+    {
+      assert (refcount == 0);
+      if (next)
+        next->unref();
+    }
+
+    static void asyncClosed(uv_handle_t* handle)
+    {
+      Executor* self = static_cast<Executor*> (handle->data);
+      delete self;
+    }
+
+    static void asyncExec(uv_async_t* async, int status)
+    {
+      Executor* self = static_cast<Executor*> (async->data);
+      self->exec();
+    }
+
+    void enqueue()
+    {
+      if (!queued)
+        uv_async_send (&async);
+      queued = true;
+    }
+
+    void exec()
+    {
+      assert (refcount == 0);
+      func (prevResult, Continuation<Result> (this));
+    }
+
+    void finish(Result& res)
+    {
+      finish (Result (res));
+    }
+    
+    void finish(Result&& res)
+    {
+      if (next) {
+        next->prevResult = std::move (res);
+        func = nullptr;
+        uv_close (reinterpret_cast<uv_handle_t*> (&async), asyncClosed);
+      }
+    }
+  };
+
+  Executor* m_exec;
+
+  Continuation(Executor* exec) :
+    m_exec (exec->ref())
+  {}
 };
 
 #endif // CONTINUATION_H
