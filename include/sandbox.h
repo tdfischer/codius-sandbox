@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include "codius-util.h"
+#include "continuation.h"
 
 class SandboxPrivate;
 class SandboxIPC;

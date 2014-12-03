@@ -1,5 +1,7 @@
 #include "sandbox.h"
 
+#include "continuation.h"
+
 #include <iostream>
 #include <errno.h>
 #include <vector>
@@ -103,6 +105,7 @@ SandboxPrivate::handleExecEvent(pid_t pid)
     }
     assert (scratchAddr);
   }
+  ptrace (PTRACE_CONT, pid, 0, 0);
 }
 
 void
@@ -426,32 +429,35 @@ SandboxPrivate::handleSeccompEvent(pid_t pid)
 #endif
 
   d->resetScratch();
-  call = Sandbox::SyscallCall (d->handleSyscall (call));
-  call = Sandbox::SyscallCall (vfs->handleSyscall (call));
-
+  d->handleSyscall (call);
+  vfs->handleSyscall (call).then ([=](Sandbox::SyscallCall call, Continuation<Sandbox::SyscallCall>* cont){
+    struct user_regs_struct outRegs (regs);
 #ifdef __i386__
-  regs.orig_eax = call.id;
-  regs.ebx = call.args[0];
-  regs.ecx = call.args[1];
-  regs.edx = call.args[2];
-  regs.esi = call.args[3];
-  regs.edi = call.args[4];
-  regs.ebp = call.args[5];
-  regs.eax = call.returnVal;
+    outRegs.orig_eax = call.id;
+    outRegs.ebx = call.args[0];
+    outRegs.ecx = call.args[1];
+    outRegs.edx = call.args[2];
+    outRegs.esi = call.args[3];
+    outRegs.edi = call.args[4];
+    outRegs.ebp = call.args[5];
+    outRegs.eax = call.returnVal;
 #else
-  regs.orig_rax = call.id;
-  regs.rdi = call.args[0];
-  regs.rsi = call.args[1];
-  regs.rdx = call.args[2];
-  regs.rcx = call.args[3];
-  regs.r8 = call.args[4];
-  regs.r9 = call.args[5];
-  regs.rax = call.returnVal;
+    outRegs.orig_rax = call.id;
+    outRegs.rdi = call.args[0];
+    outRegs.rsi = call.args[1];
+    outRegs.rdx = call.args[2];
+    outRegs.rcx = call.args[3];
+    outRegs.r8 = call.args[4];
+    outRegs.r9 = call.args[5];
+    outRegs.rax = call.returnVal;
 #endif
 
-  if (ptrace (PTRACE_SETREGS, pid, 0, &regs) < 0) {
-    error (EXIT_FAILURE, errno, "Failed to set registers");
-  }
+    if (ptrace (PTRACE_SETREGS, pid, 0, &outRegs) < 0) {
+      error (EXIT_FAILURE, errno, "Failed to set registers");
+    }
+
+    ptrace (PTRACE_CONT, pid, 0, 0);
+  });
 }
 
 pid_t
@@ -545,7 +551,6 @@ handle_trap(uv_signal_t *handle, int signum)
         int s = ((status >> 8) & ~SIGTRAP) >> 8;
         if (s == PTRACE_EVENT_SECCOMP) {
           priv->handleSeccompEvent(pid);
-          ptrace (PTRACE_CONT, pid, 0, 0);
         } else if (s == PTRACE_EVENT_EXIT) {
           if (pid == priv->pid) {
             ptrace (PTRACE_GETEVENTMSG, pid, 0, &status);
@@ -561,13 +566,12 @@ handle_trap(uv_signal_t *handle, int signum)
               assert (WIFEXITED (status));
               priv->d->handleExit (WEXITSTATUS (status));
             }
-            priv->d->releaseChild(0);
+            priv->d->releaseChild (0);
           } else {
             ptrace (PTRACE_CONT, pid, 0, 0);
           }
         } else if (s == PTRACE_EVENT_EXEC) {
           priv->handleExecEvent(pid);
-          ptrace (PTRACE_CONT, pid, 0, 0);
         } else if (s == PTRACE_EVENT_CLONE) {
           pid_t childPID;
           ptrace (PTRACE_GETEVENTMSG, pid, 0, &childPID);

@@ -51,7 +51,7 @@ public:
   /**
    * Handles filesystem related syscalls
    */
-  Sandbox::SyscallCall handleSyscall(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> handleSyscall(const Sandbox::SyscallCall& call);
 
   /**
    * Copies a string out of a sandboxed process' memory

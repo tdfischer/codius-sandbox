@@ -370,27 +370,31 @@ VFS::setCWD(const std::string& fname)
 
 #define HANDLE_CALL(x) case SYS_##x: do_##x(ret);break;
 
-Sandbox::SyscallCall
+Continuation<Sandbox::SyscallCall>
 VFS::handleSyscall(const Sandbox::SyscallCall& call)
 {
-  Sandbox::SyscallCall ret(call);
-  switch (call.id) {
-    HANDLE_CALL (open);
-    HANDLE_CALL (close);
-    HANDLE_CALL (read);
-    HANDLE_CALL (fstat);
-    HANDLE_CALL (getdents);
-    HANDLE_CALL (openat);
-    HANDLE_CALL (lseek);
-    HANDLE_CALL (write);
-    HANDLE_CALL (access);
-    HANDLE_CALL (chdir);
-    HANDLE_CALL (stat);
-    HANDLE_CALL (lstat);
-    HANDLE_CALL (getcwd);
-    HANDLE_CALL (readlink);
-  }
-  return ret;
+  return Continuation<Sandbox::SyscallCall>([=](Sandbox::SyscallCall call, Continuation<Sandbox::SyscallCall>* cont){
+    Sandbox::SyscallCall ret(call);
+    switch (call.id) {
+      HANDLE_CALL (open);
+      HANDLE_CALL (close);
+      HANDLE_CALL (read);
+      HANDLE_CALL (fstat);
+      HANDLE_CALL (getdents);
+      HANDLE_CALL (openat);
+      HANDLE_CALL (lseek);
+      HANDLE_CALL (write);
+      HANDLE_CALL (access);
+      HANDLE_CALL (chdir);
+      HANDLE_CALL (stat);
+      HANDLE_CALL (lstat);
+      HANDLE_CALL (getcwd);
+      HANDLE_CALL (readlink);
+    }
+
+    cont->finish (std::move (ret));
+
+  }, Sandbox::SyscallCall (call));
 }
 
 #undef HANDLE_CALL
