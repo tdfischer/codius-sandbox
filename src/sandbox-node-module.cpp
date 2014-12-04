@@ -346,8 +346,15 @@ NodeSandbox::node_spawn(const Arguments& args)
     }
   }
 
-  wrap->sbox->getVFS().setCWD ("/contract/");
-  wrap->sbox->spawn(argv, envp);
+  wrap->sbox->getVFS().setCWD ("/contract/").then(Continuation<int>([=]() mutable {;
+    wrap->sbox->spawn(argv, envp);
+    // FIXME: This also needs freed outside of this
+    for (int i = 0; i < args.Length();i ++) {
+      free (argv[i]);
+    }
+    free (argv);
+    return 0;
+  }));
 
   goto out;
 
@@ -360,11 +367,6 @@ err_options:
   goto out;
 
 out:
-  for (int i = 0; i < args.Length();i ++) {
-    free (argv[i]);
-  }
-  free (argv);
-
   return Undefined();
 }
 
