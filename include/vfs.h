@@ -111,7 +111,7 @@ public:
    * @param path Path to set new cwd to
    * @return 0 on success, negative error number otherwise.
    */
-  int setCWD(const std::string& path);
+  Continuation<int> setCWD(const std::string& path);
 
 private:
   Sandbox* m_sbox;
@@ -124,21 +124,21 @@ private:
 
   void openFile(Sandbox::SyscallCall& call, const std::string& fname, int flags, mode_t mode);
 
-  void do_open(Sandbox::SyscallCall& call);
-  void do_close(Sandbox::SyscallCall& call);
-  void do_read(Sandbox::SyscallCall& call);
-  void do_fstat(Sandbox::SyscallCall& call);
-  void do_getdents(Sandbox::SyscallCall& call);
-  void do_openat(Sandbox::SyscallCall& call);
-  void do_lseek(Sandbox::SyscallCall& call);
-  void do_write(Sandbox::SyscallCall& call);
-  void do_access(Sandbox::SyscallCall& call);
-  void do_chdir(Sandbox::SyscallCall& call);
-  void do_fchdir(Sandbox::SyscallCall& call);
-  void do_stat(Sandbox::SyscallCall& call);
-  void do_lstat(Sandbox::SyscallCall& call);
-  void do_getcwd(Sandbox::SyscallCall& call);
-  void do_readlink(Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_open(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_close(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_read(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_fstat(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_getdents(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_openat(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_lseek(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_write(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_access(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_chdir(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_fchdir(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_stat(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_lstat(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_getcwd(const Sandbox::SyscallCall& call);
+  Continuation<Sandbox::SyscallCall> do_readlink(const Sandbox::SyscallCall& call);
 
   File::Ptr makeFile (int fd, const std::string& path, std::shared_ptr<Filesystem>& fs);
 };

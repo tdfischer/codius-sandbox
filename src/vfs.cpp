@@ -113,40 +113,48 @@ File::path() const
   return m_path;
 }
 
-void
-VFS::do_readlink (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_readlink (const Sandbox::SyscallCall& callIn)
 {
-  std::string fname = getFilename (call.pid, call.args[0]);
-  if (!isWhitelisted (fname)) {
-    call.id = -1;
-    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
-    if (fs.second) {
-      std::vector<char> buf (call.args[2]);
-      call.returnVal = fs.second->readlink (fs.first.c_str(), buf.data(), buf.size());
-      m_sbox->writeData (call.pid, call.args[1], std::min(buf.size(), call.returnVal), buf.data());
-    } else {
-      call.returnVal = -ENOENT;
+  return Continuation<Sandbox::SyscallCall> ([=]{
+    Sandbox::SyscallCall call (callIn);
+    std::string fname = getFilename (call.pid, call.args[0]);
+    if (!isWhitelisted (fname)) {
+      call.id = -1;
+      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+      if (fs.second) {
+        std::vector<char> buf (call.args[2]);
+        call.returnVal = fs.second->readlink (fs.first.c_str(), buf.data(), buf.size());
+        m_sbox->writeData (call.pid, call.args[1], std::min(buf.size(), call.returnVal), buf.data());
+      } else {
+        call.returnVal = -ENOENT;
+      }
     }
-  }
+    return call;
+  });
 }
 
-void
-VFS::do_openat (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_openat (const Sandbox::SyscallCall& call)
 {
-  std::string fname = getFilename (call.pid, call.args[1]);
+  return Continuation<Sandbox::SyscallCall> ([=]() {
+    std::string fname = getFilename (call.pid, call.args[1]);
 
-  if (fname[0] != '/') {
-    std::string fdPath;
-    if (call.args[0] == AT_FDCWD) {
-      fdPath = m_cwd->path();
-    } else if (isVirtualFD (call.args[0])) {
-      File::Ptr file = getFile (call.args[0]);
-      fdPath = file->path();
+    if (fname[0] != '/') {
+      std::string fdPath;
+      if (call.args[0] == AT_FDCWD) {
+        fdPath = m_cwd->path();
+      } else if (isVirtualFD (call.args[0])) {
+        File::Ptr file = getFile (call.args[0]);
+        fdPath = file->path();
+      }
+      fname = fdPath + fname;
     }
-    fname = fdPath + fname;
-  }
 
-  openFile (call, fname, call.args[2], call.args[3]);
+    Sandbox::SyscallCall openCall (call);
+    openFile (openCall, fname, call.args[2], call.args[3]);
+    return openCall;
+  });
 }
 
 
@@ -163,19 +171,23 @@ VFS::makeFile (int fd, const std::string& path, std::shared_ptr<Filesystem>& fs)
   return f;
 }
 
-void
-VFS::do_access (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_access (const Sandbox::SyscallCall& call)
 {
-  std::string fname = getFilename (call.pid, call.args[0]);
-  if (!isWhitelisted (fname)) {
-    call.id = -1;
-    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
-    if (fs.second) {
-      call.returnVal = fs.second->access (fs.first.c_str(), call.args[1]);
-    } else {
-      call.returnVal = -ENOENT;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    std::string fname = getFilename (call.pid, call.args[0]);
+    if (!isWhitelisted (fname)) {
+      ret.id = -1;
+      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+      if (fs.second) {
+        ret.returnVal = fs.second->access (fs.first.c_str(), call.args[1]);
+      } else {
+        ret.returnVal = -ENOENT;
+      }
     }
-  }
+    return ret;
+  });
 }
 
 void
@@ -198,11 +210,15 @@ VFS::openFile(Sandbox::SyscallCall& call, const std::string& fname, int flags, m
   }
 }
 
-void
-VFS::do_open (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_open (const Sandbox::SyscallCall& call)
 {
-  std::string fname = getFilename (call.pid, call.args[0]);
-  openFile (call, fname, call.args[1], call.args[2]);
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    std::string fname = getFilename (call.pid, call.args[0]);
+    openFile (ret, fname, call.args[1], call.args[2]);
+    return ret;
+  });
 }
 
 int
@@ -223,19 +239,23 @@ File::fs() const
   return m_fs;
 }
 
-void
-VFS::do_close (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_close (const Sandbox::SyscallCall& call)
 {
-  if (isVirtualFD (call.args[0])) {
-    call.id = -1;
-    File::Ptr fh = getFile (call.args[0]);
-    if (fh) {
-      call.returnVal = fh->close ();
-      m_openFiles.erase (fh->virtualFD());
-    } else {
-      call.returnVal = -EBADF;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    if (isVirtualFD (ret.args[0])) {
+      ret.id = -1;
+      File::Ptr fh = getFile (ret.args[0]);
+      if (fh) {
+        ret.returnVal = fh->close ();
+        m_openFiles.erase (fh->virtualFD());
+      } else {
+        ret.returnVal = -EBADF;
+      }
     }
-  }
+    return ret;
+  });
 }
 
 ssize_t
@@ -244,25 +264,29 @@ File::read(void* buf, size_t count)
   return m_fs->read (m_localFD, buf, count);
 }
 
-void
-VFS::do_read (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_read (const Sandbox::SyscallCall& call)
 {
-  if (isVirtualFD (call.args[0])) {
-    call.id = -1;
-    File::Ptr file = getFile (call.args[0]);
-    std::vector<char> buf (call.args[2]);
-    if (file) {
-      ssize_t readCount = file->read (buf.data(), buf.size());
-      if (readCount >= 0) {
-        m_sbox->writeData (call.pid, call.args[1], readCount, buf.data());
-        call.returnVal = readCount;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    if (isVirtualFD (ret.args[0])) {
+      ret.id = -1;
+      File::Ptr file = getFile (ret.args[0]);
+      std::vector<char> buf (ret.args[2]);
+      if (file) {
+        ssize_t readCount = file->read (buf.data(), buf.size());
+        if (readCount >= 0) {
+          m_sbox->writeData (ret.pid, ret.args[1], readCount, buf.data());
+          ret.returnVal = readCount;
+        } else {
+          ret.returnVal = -errno;
+        }
       } else {
-        call.returnVal = -errno;
+        ret.returnVal = -EBADF;
       }
-    } else {
-      call.returnVal = -EBADF;
     }
-  }
+    return ret;
+  });
 }
 
 int
@@ -271,21 +295,25 @@ File::fstat (struct stat* buf)
   return m_fs->fstat (m_localFD, buf);
 }
 
-void
-VFS::do_fstat (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_fstat (const Sandbox::SyscallCall& call)
 {
-  if (isVirtualFD (call.args[0])) {
-    File::Ptr file = getFile (call.args[0]);
-    call.id = -1;
-    if (file) {
-      struct stat sbuf;
-      call.returnVal = file->fstat (&sbuf);
-      if (call.returnVal == 0)
-        m_sbox->writeData(call.pid, call.args[1], sizeof (sbuf), (char*)&sbuf);
-    } else {
-      call.returnVal = -EBADF;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    if (isVirtualFD (ret.args[0])) {
+      File::Ptr file = getFile (ret.args[0]);
+      ret.id = -1;
+      if (file) {
+        struct stat sbuf;
+        ret.returnVal = file->fstat (&sbuf);
+        if (ret.returnVal == 0)
+          m_sbox->writeData(ret.pid, ret.args[1], sizeof (sbuf), (char*)&sbuf);
+      } else {
+        ret.returnVal = -EBADF;
+      }
     }
-  }
+    return ret;
+  });
 }
 
 int
@@ -294,55 +322,73 @@ File::getdents(struct linux_dirent* dirs, unsigned int count)
   return m_fs->getdents (m_localFD, dirs, count);
 }
 
-void
-VFS::do_write (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_write (const Sandbox::SyscallCall& call)
 {
-  if (isVirtualFD (call.args[0])) {
-    File::Ptr file = getFile (call.args[0]);
-    call.id = -1;
-    if (file) {
-      std::vector<char> buf (call.args[2]);
-      m_sbox->copyData (call.pid, call.args[1], buf.size(), buf.data());
-      call.returnVal = file->write (buf.data(), buf.size());
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    if (isVirtualFD (ret.args[0])) {
+      File::Ptr file = getFile (ret.args[0]);
+      ret.id = -1;
+      if (file) {
+        std::vector<char> buf (ret.args[2]);
+        m_sbox->copyData (ret.pid, ret.args[1], buf.size(), buf.data());
+        ret.returnVal = file->write (buf.data(), buf.size());
+      }
     }
-  }
+    return ret;
+  });
 }
 
-void
-VFS::do_getdents (Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_getdents (const Sandbox::SyscallCall& call)
 {
-  if (isVirtualFD (call.args[0])) {
-    File::Ptr file = getFile (call.args[0]);
-    call.id = -1;
-    if (file) {
-      std::vector<char> buf (call.args[2]);
-      struct linux_dirent* dirents = (struct linux_dirent*)buf.data();
-      call.returnVal = file->getdents (dirents, buf.size());
-      if ((int)call.returnVal > 0)
-        m_sbox->writeData(call.pid, call.args[1], call.returnVal, buf.data());
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    if (isVirtualFD (ret.args[0])) {
+      File::Ptr file = getFile (ret.args[0]);
+      ret.id = -1;
+      if (file) {
+        std::vector<char> buf (ret.args[2]);
+        struct linux_dirent* dirents = (struct linux_dirent*)buf.data();
+        ret.returnVal = file->getdents (dirents, buf.size());
+        if ((int)ret.returnVal > 0)
+          m_sbox->writeData(ret.pid, ret.args[1], ret.returnVal, buf.data());
+      } else {
+        ret.returnVal = -EBADF;
+      }
+    }
+    return ret;
+  });
+}
+
+Continuation<Sandbox::SyscallCall>
+VFS::do_fchdir(const Sandbox::SyscallCall& call)
+{
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    File::Ptr fh = getFile (ret.args[0]);
+    if (fh) {
+      m_cwd = fh;
+      ret.returnVal = 0;
     } else {
-      call.returnVal = -EBADF;
+      ret.returnVal = -EBADF;
     }
-  }
+    return ret;
+  });
 }
 
-void
-VFS::do_fchdir(Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_chdir(const Sandbox::SyscallCall& call)
 {
-  File::Ptr fh = getFile (call.args[0]);
-  if (fh) {
-    m_cwd = fh;
-    call.returnVal = 0;
-  } else {
-    call.returnVal = -EBADF;
-  }
-}
-
-void
-VFS::do_chdir(Sandbox::SyscallCall& call)
-{
-  std::string fname = getFilename (call.pid, call.args[0]);
-  call.returnVal = setCWD (fname);
+  return Continuation<Sandbox::SyscallCall>([=](Sandbox::SyscallCall, Continuation<Sandbox::SyscallCall> finish) {
+    Sandbox::SyscallCall ret (call);
+    std::string fname = getFilename (ret.pid, ret.args[0]);
+    setCWD (fname).then(Continuation<int>([&](int result) {
+      ret.returnVal = result;
+      finish (ret);
+    }));
+  });
 }
 
 std::string
@@ -352,49 +398,47 @@ VFS::getCWD() const
   return m_cwd->path();
 }
 
-int
+Continuation<int>
 VFS::setCWD(const std::string& fname)
 {
-  std::string trimmedFname (fname);
-  if (trimmedFname[fname.length()-1] == '/')
-    trimmedFname = std::string(fname.cbegin(), fname.cend()-1);
-  std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (trimmedFname);
-  if (fs.second) {
-    int fd = fs.second->open (fs.first.c_str(), O_DIRECTORY, 0);
-    m_cwd = File::Ptr (new File (fd, trimmedFname, fs.second));
-    return 0;
-  } else {
-    return -ENOENT;
-  }
+  return Continuation<int>([=]() {
+    std::string trimmedFname (fname);
+    if (trimmedFname[fname.length()-1] == '/')
+      trimmedFname = std::string(fname.cbegin(), fname.cend()-1);
+    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (trimmedFname);
+    if (fs.second) {
+      int fd = fs.second->open (fs.first.c_str(), O_DIRECTORY, 0);
+      m_cwd = File::Ptr (new File (fd, trimmedFname, fs.second));
+      return 0;
+    } else {
+      return -ENOENT;
+    }
+  });
 }
 
-#define HANDLE_CALL(x) case SYS_##x: do_##x(ret);break;
+#define HANDLE_CALL(x) case SYS_##x: return do_##x(call);break;
 
 Continuation<Sandbox::SyscallCall>
 VFS::handleSyscall(const Sandbox::SyscallCall& call)
 {
-  return Continuation<Sandbox::SyscallCall>([=](Sandbox::SyscallCall call, Continuation<Sandbox::SyscallCall>* cont){
-    Sandbox::SyscallCall ret(call);
-    switch (call.id) {
-      HANDLE_CALL (open);
-      HANDLE_CALL (close);
-      HANDLE_CALL (read);
-      HANDLE_CALL (fstat);
-      HANDLE_CALL (getdents);
-      HANDLE_CALL (openat);
-      HANDLE_CALL (lseek);
-      HANDLE_CALL (write);
-      HANDLE_CALL (access);
-      HANDLE_CALL (chdir);
-      HANDLE_CALL (stat);
-      HANDLE_CALL (lstat);
-      HANDLE_CALL (getcwd);
-      HANDLE_CALL (readlink);
-    }
-
-    cont->finish (std::move (ret));
-
-  }, Sandbox::SyscallCall (call));
+  switch (call.id) {
+    HANDLE_CALL (open);
+    HANDLE_CALL (close);
+    HANDLE_CALL (read);
+    HANDLE_CALL (fstat);
+    HANDLE_CALL (getdents);
+    HANDLE_CALL (openat);
+    HANDLE_CALL (lseek);
+    HANDLE_CALL (write);
+    HANDLE_CALL (access);
+    HANDLE_CALL (chdir);
+    HANDLE_CALL (stat);
+    HANDLE_CALL (lstat);
+    HANDLE_CALL (getcwd);
+    HANDLE_CALL (readlink);
+    default:
+      return call;
+  }
 }
 
 #undef HANDLE_CALL
@@ -411,62 +455,78 @@ File::write(void* buf, size_t count)
   return m_fs->write (m_localFD, buf, count);
 }
 
-void
-VFS::do_getcwd(Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_getcwd(const Sandbox::SyscallCall& call)
 {
-  std::string cwd = getCWD();
-  m_sbox->writeData (call.pid, call.args[0], std::min (call.args[1], cwd.length()), cwd.c_str());
-  call.returnVal = cwd.length();
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    std::string cwd = getCWD();
+    m_sbox->writeData (ret.pid, ret.args[0], std::min (ret.args[1], cwd.length()), cwd.c_str());
+    ret.returnVal = cwd.length();
+    return ret;
+  });
 }
 
-void
-VFS::do_lstat(Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_lstat(const Sandbox::SyscallCall& call)
 {
-  std::string fname = getFilename (call.pid, call.args[0]);
-  if (!isWhitelisted (fname)) {
-    call.id = -1;
-    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
-    if (fs.second) {
-      struct stat sbuf;
-      call.returnVal = fs.second->lstat (fname.c_str(), &sbuf);
-      if (call.returnVal == 0)
-        m_sbox->writeData (call.pid, call.args[1], sizeof (sbuf), (char*)&sbuf);
-    } else {
-      call.returnVal = -ENOENT;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    std::string fname = getFilename (ret.pid, ret.args[0]);
+    if (!isWhitelisted (fname)) {
+      ret.id = -1;
+      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+      if (fs.second) {
+        struct stat sbuf;
+        ret.returnVal = fs.second->lstat (fname.c_str(), &sbuf);
+        if (ret.returnVal == 0)
+          m_sbox->writeData (ret.pid, ret.args[1], sizeof (sbuf), (char*)&sbuf);
+      } else {
+        ret.returnVal = -ENOENT;
+      }
     }
-  }
+    return ret;
+  });
 }
 
-void
-VFS::do_stat(Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_stat(const Sandbox::SyscallCall& call)
 {
-  std::string fname = getFilename (call.pid, call.args[0]);
-  if (!isWhitelisted (fname)) {
-    call.id = -1;
-    std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
-    if (fs.second) {
-      struct stat sbuf;
-      call.returnVal = fs.second->stat (fname.c_str(), &sbuf);
-      if (call.returnVal == 0)
-        m_sbox->writeData (call.pid, call.args[1], sizeof (sbuf), (char*)&sbuf);
-    } else {
-      call.returnVal = -ENOENT;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    std::string fname = getFilename (ret.pid, ret.args[0]);
+    if (!isWhitelisted (fname)) {
+      ret.id = -1;
+      std::pair<std::string, std::shared_ptr<Filesystem> > fs = getFilesystem (fname);
+      if (fs.second) {
+        struct stat sbuf;
+        ret.returnVal = fs.second->stat (fname.c_str(), &sbuf);
+        if (ret.returnVal == 0)
+          m_sbox->writeData (ret.pid, ret.args[1], sizeof (sbuf), (char*)&sbuf);
+      } else {
+        ret.returnVal = -ENOENT;
+      }
     }
-  }
+    return ret;
+  });
 }
 
-void
-VFS::do_lseek(Sandbox::SyscallCall& call)
+Continuation<Sandbox::SyscallCall>
+VFS::do_lseek(const Sandbox::SyscallCall& call)
 {
-  if (isVirtualFD (call.args[0])) {
-    call.id = -1;
-    File::Ptr file = getFile (call.args[0]);
-    if (file) {
-      call.returnVal = file->lseek (call.args[1], call.args[2]);
-    } else {
-      call.returnVal = -EBADF;
+  return Continuation<Sandbox::SyscallCall>([=]() {
+    Sandbox::SyscallCall ret (call);
+    if (isVirtualFD (ret.args[0])) {
+      ret.id = -1;
+      File::Ptr file = getFile (ret.args[0]);
+      if (file) {
+        ret.returnVal = file->lseek (ret.args[1], ret.args[2]);
+      } else {
+        ret.returnVal = -EBADF;
+      }
     }
-  }
+    return ret;
+  });
 }
 
 bool
