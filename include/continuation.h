@@ -10,29 +10,27 @@
 template<typename Result>
 class Continuation {
 public:
-  using FunctionType = std::function<void(Result, Continuation<Result> cont)>;
-  using EndFunctionType = std::function<void(Result)>;
-  using ReturnFunctionType = std::function<Result()>;
+  using FunctionType = std::function<void(const Result, Continuation<Result> cont)>;
+  using EndFunctionType = std::function<void(const Result)>;
+  using ReturnFunctionType = std::function<Result(void)>;
 
   Continuation(FunctionType&& func) :
     m_exec (new Executor (std::move (func)))
   {}
 
   Continuation(ReturnFunctionType&& func) :
-    Continuation([=](Result, Continuation<Result> cont) {cont (func());})
+    Continuation([=](const Result, Continuation<Result> cont) {cont (func());})
   {}
 
   Continuation(EndFunctionType&& func) :
-    Continuation([=](Result res, Continuation<Result> cont) {func (res);cont (res);})
+    Continuation([=](const Result res, Continuation<Result> cont) {func (res);cont (res);})
   {}
 
-  Continuation(Result&& result) :
-    Continuation([=](Result res, Continuation<Result> cont) {cont (res);})
-  {}
-
-  Continuation(const Result& result) :
-    Continuation([=](Result res, Continuation<Result> cont) {cont (res);})
-  {}
+  Continuation(const Result result) :
+    Continuation([=](const Result res, Continuation<Result> cont) {cont (result);})
+  {
+    m_exec->prevResult = result;
+  }
 
   Continuation(Continuation&& other) :
     m_exec (other.m_exec->ref())
@@ -60,24 +58,14 @@ public:
     return std::move (next);
   }
 
-  void operator()(Result&& res)
-  {
-    finish (std::move (res));
-  }
-
-  void operator()(Result& res)
+  void operator()(const Result& res)
   {
     finish (res);
   }
 
-  void finish(Result& res)
+  void finish(const Result& res)
   {
     m_exec->finish (res);
-  }
-
-  void finish(Result&& res)
-  {
-    m_exec->finish (std::move (res));
   }
 
 private:
@@ -126,6 +114,7 @@ private:
     static void asyncClosed(uv_handle_t* handle)
     {
       Executor* self = static_cast<Executor*> (handle->data);
+      assert (self->func == nullptr);
       delete self;
     }
 
