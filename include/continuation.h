@@ -15,7 +15,7 @@ public:
   using ReturnFunctionType = std::function<Result()>;
 
   Continuation(FunctionType&& func) :
-    m_exec (new Executor (std::move (func), Result()))
+    m_exec (new Executor (std::move (func)))
   {}
 
   Continuation(ReturnFunctionType&& func) :
@@ -89,10 +89,9 @@ private:
     uv_async_t async;
     int refcount;
 
-    Executor(FunctionType&& func, Result&& initial = Result()) :
+    Executor(FunctionType&& func) :
       func (std::move (func)),
       next (nullptr),
-      prevResult (std::move (initial)),
       queued (false),
       refcount (1)
     {
