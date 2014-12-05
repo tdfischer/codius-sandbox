@@ -148,19 +148,15 @@ private:
       func (prevResult, Continuation<Result> (this));
     }
 
-    void finish(Result& res)
-    {
-      finish (Result (res));
-    }
-    
-    void finish(Result&& res)
+    void finish(const Result& res)
     {
       if (next) {
-        next->prevResult = std::move (res);
-        func = nullptr;
-        uv_close (reinterpret_cast<uv_handle_t*> (&async), asyncClosed);
+        next->prevResult = res;
       }
+      func = nullptr;
+      uv_close (reinterpret_cast<uv_handle_t*> (&async), asyncClosed);
     }
+
   };
 
   Executor* m_exec;
