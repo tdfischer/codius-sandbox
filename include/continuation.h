@@ -14,25 +14,32 @@ public:
   using EndFunctionType = std::function<void(const Result)>;
   using ReturnFunctionType = std::function<Result(void)>;
 
-  Continuation(FunctionType&& func) :
-    m_exec (new Executor (std::move (func)))
+  Continuation(FunctionType func) :
+    m_exec (new Executor (func))
   {}
 
-  Continuation(ReturnFunctionType&& func) :
-    Continuation([=](const Result, Continuation<Result> cont) {cont (func());})
+  Continuation(ReturnFunctionType func) :
+    Continuation([=](const Result, Continuation<Result> cont) {
+      cont (func());
+    })
   {}
 
-  Continuation(EndFunctionType&& func) :
-    Continuation([=](const Result res, Continuation<Result> cont) {func (res);cont (res);})
+  Continuation(EndFunctionType func) :
+    Continuation([=](const Result res, Continuation<Result> cont) {
+      func (res);
+      cont (res);
+    })
   {}
 
   Continuation(const Result result) :
-    Continuation([=](const Result res, Continuation<Result> cont) {cont (result);})
+    Continuation([=](const Result res, Continuation<Result> cont) {
+      cont (res);
+    })
   {
     m_exec->prevResult = result;
   }
 
-  Continuation(Continuation&& other) :
+  Continuation(Continuation& other) :
     m_exec (other.m_exec->ref())
   {
     other.m_exec->unref();
@@ -77,8 +84,8 @@ private:
     uv_async_t async;
     int refcount;
 
-    Executor(FunctionType&& func) :
-      func (std::move (func)),
+    Executor(FunctionType& func) :
+      func (func),
       next (nullptr),
       queued (false),
       refcount (1)
@@ -89,17 +96,17 @@ private:
 
     void unref()
     {
-      refcount--;
+      if (refcount > 0)
+        refcount--;
       Debug() << refcount;
-      assert (refcount < 10);
-      assert (refcount >= 0);
       if (refcount == 0)
         enqueue();
     }
 
     Executor* ref()
     {
-      refcount++;
+      if (refcount > 0)
+        refcount++;
       Debug() << refcount;
       return this;
     }

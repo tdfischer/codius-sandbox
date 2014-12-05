@@ -45,7 +45,7 @@ CodiusNodeFilesystem::doVFS(const std::string& name, Handle<Value> argv[], int a
   return r;
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::open(const char* name, int flags, int mode)
 {
   Handle<Value> argv[] = {
@@ -64,7 +64,7 @@ CodiusNodeFilesystem::open(const char* name, int flags, int mode)
   return ret.result->ToInt32()->Value();
 }
 
-ssize_t
+Continuation<ssize_t>
 CodiusNodeFilesystem::read(int fd, void* buf, size_t count)
 {
   Handle<Value> argv[] = {
@@ -84,7 +84,7 @@ CodiusNodeFilesystem::read(int fd, void* buf, size_t count)
   return ret.result->ToString()->Utf8Length();
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::close(int fd)
 {
   Handle<Value> argv[] = {
@@ -96,7 +96,7 @@ CodiusNodeFilesystem::close(int fd)
   return -doVFS (std::string ("close"), argv, 1).errnum;
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::fstat(int fd, struct stat* buf)
 {
   Handle<Value> argv[] = {
@@ -122,7 +122,7 @@ CodiusNodeFilesystem::fstat(int fd, struct stat* buf)
   return 0;
 }
 
-off_t
+Continuation<off_t>
 CodiusNodeFilesystem::lseek(int fd, off_t offset, int whence)
 {
   switch (whence) {
@@ -135,10 +135,10 @@ CodiusNodeFilesystem::lseek(int fd, off_t offset, int whence)
     default:
       return -ENOSYS;
   }
-  return 0;
+  return (off_t)0;
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::getdents(int fd, struct linux_dirent* dirs, unsigned int count)
 {
   Handle<Value> argv[] = {
@@ -163,7 +163,7 @@ CodiusNodeFilesystem::getdents(int fd, struct linux_dirent* dirs, unsigned int c
   return buf.size();
 }
 
-ssize_t
+Continuation<ssize_t>
 CodiusNodeFilesystem::write(int fd, void* buf, size_t count)
 {
   Handle<Value> argv[] = {
@@ -179,7 +179,7 @@ CodiusNodeFilesystem::write(int fd, void* buf, size_t count)
   return ret.result->ToInt32()->Value();
 }
 
-ssize_t
+Continuation<ssize_t>
 CodiusNodeFilesystem::readlink (const char* path, char* buf, size_t bufsize)
 {
   Handle<Value> argv[] = {
@@ -195,7 +195,7 @@ CodiusNodeFilesystem::readlink (const char* path, char* buf, size_t bufsize)
   return ret.result->ToString()->Utf8Length();
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::access (const char* name, int mode)
 {
   Handle<Value> argv[] = {
@@ -211,7 +211,7 @@ CodiusNodeFilesystem::access (const char* name, int mode)
   return ret.result->ToInt32()->Value();
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::stat (const char* name, struct stat* buf)
 {
   Handle<Value> argv[] = {
@@ -238,7 +238,7 @@ CodiusNodeFilesystem::stat (const char* name, struct stat* buf)
   return 0;
 }
 
-int
+Continuation<int>
 CodiusNodeFilesystem::lstat (const char* name, struct stat* buf)
 {
   Handle<Value> argv[] = {

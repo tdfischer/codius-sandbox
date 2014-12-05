@@ -451,6 +451,7 @@ SandboxPrivate::handleSeccompEvent(pid_t pid)
     regs.rax = call.returnVal;
 #endif
 
+    assert (call.pid == pid);
     if (ptrace (PTRACE_SETREGS, pid, 0, &regs) < 0) {
       abort();
       error (EXIT_FAILURE, errno, "Failed to set registers");
@@ -639,3 +640,11 @@ Sandbox::getVFS() const
 {
   return *m_p->vfs;
 }
+
+#include <cstddef>
+
+uv_handle_t* find_handle(void* p)
+{
+  return (uv_handle_t*) ((unsigned char*) p - offsetof (uv_handle_t, handle_queue));
+}
+

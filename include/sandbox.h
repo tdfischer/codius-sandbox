@@ -40,8 +40,8 @@ class Sandbox {
      */
     class SyscallCall {
       public:
-        SyscallCall () : id(-1), pid(-1) {}
-        SyscallCall (pid_t pid) : id(-1), pid(pid) {}
+        SyscallCall () : id(-1), args{(Sandbox::Word)-1, (Sandbox::Word)-1, (Sandbox::Word)-1, (Sandbox::Word)-1, (Sandbox::Word)-1, (Sandbox::Word)-1}, returnVal(-1), pid(-1) {}
+        explicit SyscallCall (pid_t pid) : id(-1), pid(pid) {}
 
         /**
          * Syscall number

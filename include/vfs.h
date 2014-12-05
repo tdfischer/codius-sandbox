@@ -19,12 +19,12 @@ public:
   int virtualFD() const;
   std::shared_ptr<Filesystem> fs() const;
 
-  int close();
-  int fstat(struct stat* buf);
-  int getdents(struct linux_dirent* dirs, unsigned int count);
-  ssize_t read(void* buf, size_t count);
-  off_t lseek(off_t offset, int whence);
-  ssize_t write(void* buf, size_t count);
+  Continuation<int> close();
+  Continuation<int> fstat(struct stat* buf);
+  Continuation<int> getdents(struct linux_dirent* dirs, unsigned int count);
+  Continuation<ssize_t> read(void* buf, size_t count);
+  Continuation<off_t> lseek(off_t offset, int whence);
+  Continuation<ssize_t> write(void* buf, size_t count);
 
   std::string path() const;
 
@@ -122,7 +122,7 @@ private:
 
   bool isWhitelisted(const std::string& str);
 
-  void openFile(Sandbox::SyscallCall& call, const std::string& fname, int flags, mode_t mode);
+  Continuation<Sandbox::SyscallCall> openFile(const Sandbox::SyscallCall& call, const std::string& fname, int flags, mode_t mode);
 
   Continuation<Sandbox::SyscallCall> do_open(const Sandbox::SyscallCall& call);
   Continuation<Sandbox::SyscallCall> do_close(const Sandbox::SyscallCall& call);

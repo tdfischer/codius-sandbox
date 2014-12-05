@@ -54,7 +54,7 @@ public:
   SyscallCall handleSyscall(const SyscallCall& call) override {
     history.push_back (call);
 
-    if (remap.find (call.id) != remap.cend()) {
+    if (remap.find (SyscallCall (call.id)) != remap.cend()) {
       return remap[call];
     }
     return call;

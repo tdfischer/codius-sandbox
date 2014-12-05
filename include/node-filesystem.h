@@ -3,7 +3,7 @@
 
 #include "vfs.h"
 
-#include <node.h>
+#include <node/node.h>
 
 class NodeSandbox;
 
@@ -18,17 +18,17 @@ public:
 
   VFSResult doVFS(const std::string& name, v8::Handle<v8::Value> argv[], int argc);
 
-  int open(const char* name, int flags, int mode) override;
-  ssize_t read(int fd, void* buf, size_t count) override;
-  int close (int fd) override;
-  int fstat (int fd, struct stat* buf) override;
-  int getdents (int fd, struct linux_dirent* dirs, unsigned int count) override;
-  off_t lseek (int fd, off_t offset, int whence) override;
-  ssize_t write(int fd, void* buf, size_t count) override;
-  int access (const char* name, int mode) override;
-  int stat (const char* name, struct stat* buf) override;
-  int lstat (const char* name, struct stat* buf) override;
-  ssize_t readlink(const char* path, char* buf, size_t bufsize);
+  Continuation<int> open(const char* name, int flags, int mode) override;
+  Continuation<ssize_t> read(int fd, void* buf, size_t count) override;
+  Continuation<int> close (int fd) override;
+  Continuation<int> fstat (int fd, struct stat* buf) override;
+  Continuation<int> getdents (int fd, struct linux_dirent* dirs, unsigned int count) override;
+  Continuation<off_t> lseek (int fd, off_t offset, int whence) override;
+  Continuation<ssize_t> write(int fd, void* buf, size_t count) override;
+  Continuation<int> access (const char* name, int mode) override;
+  Continuation<int> stat (const char* name, struct stat* buf) override;
+  Continuation<int> lstat (const char* name, struct stat* buf) override;
+  Continuation<ssize_t> readlink(const char* path, char* buf, size_t bufsize);
 
 private:
   NodeSandbox* m_sbox;
