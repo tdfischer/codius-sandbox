@@ -10,43 +10,47 @@
 template<typename Result>
 class Continuation {
 public:
-  using FunctionType = std::function<void(const Result, Continuation<Result> cont)>;
-  using EndFunctionType = std::function<void(const Result)>;
+  using FunctionType = std::function<void(const Result&, Continuation<Result>)>;
+  using EndFunctionType = std::function<void(const Result&)>;
   using ReturnFunctionType = std::function<Result(void)>;
 
-  Continuation(FunctionType func) :
-    m_exec (new Executor (func))
+  explicit Continuation(FunctionType&& func) :
+    m_exec (new Executor (std::move (func)))
   {}
 
-  Continuation(ReturnFunctionType func) :
-    Continuation([=](const Result, Continuation<Result> cont) {
+  Continuation<Result>& operator=(const Continuation<Result>&) = delete;
+
+  explicit Continuation(ReturnFunctionType func) :
+    Continuation([=](Result, Continuation<Result> cont) {
       cont (func());
     })
   {}
 
-  Continuation(EndFunctionType func) :
-    Continuation([=](const Result res, Continuation<Result> cont) {
+  explicit Continuation(EndFunctionType func)
+  {
+    std::function<void(const Result&, Continuation<Result>)> f = [=](const Result& res, Continuation<Result> cont) -> void {
       func (res);
       cont (res);
-    })
-  {}
+    };
+    m_exec = new Executor (f);
+  }
 
-  Continuation(const Result result) :
-    Continuation([=](const Result res, Continuation<Result> cont) {
+  explicit Continuation(const Result& result) :
+    Continuation([=](Result res, Continuation<Result> cont) {
       cont (res);
     })
   {
     m_exec->prevResult = result;
   }
 
-  Continuation(Continuation& other) :
-    m_exec (other.m_exec->ref())
+  explicit Continuation(Continuation&& other) :
+    m_exec (std::move (other.m_exec))
   {
-    other.m_exec->unref();
+    //other.m_exec->unref();
     other.m_exec = nullptr;
   }
 
-  Continuation(const Continuation& other) :
+  explicit Continuation(const Continuation& other) :
     m_exec (other.m_exec->ref())
   {}
 
@@ -84,8 +88,8 @@ private:
     uv_async_t async;
     int refcount;
 
-    Executor(FunctionType& func) :
-      func (func),
+    Executor(FunctionType&& func) :
+      func (std::move (func)),
       next (nullptr),
       queued (false),
       refcount (1)
@@ -93,6 +97,9 @@ private:
       uv_async_init (uv_default_loop(), &async, asyncExec);
       async.data = this;
     }
+
+    Executor& operator=(const Executor&) = delete;
+    Executor(const Executor&) = delete;
 
     void unref()
     {
@@ -157,7 +164,7 @@ private:
 
   Executor* m_exec;
 
-  Continuation(Executor* exec) :
+  explicit Continuation(Executor* exec) :
     m_exec (exec->ref())
   {}
 };
